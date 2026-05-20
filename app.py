@@ -212,10 +212,14 @@ def _inline(node: ASTNode, depth: int) -> str:
 
 
 def _collect_depths(node: ASTNode, depth: int, out: set):
-    if   node.type == 'PROGRAM':             [_collect_depths(c, depth, out) for c in node.children]
-    elif node.type == 'GROUP':               out.add(depth); _collect_depths(node.child, depth + 1, out)
-    elif node.type in ('AND', 'OR', 'NEAR'): [_collect_depths(c, depth, out) for c in node.children]
-    elif node.type == 'NOT':                 _collect_depths(node.child, depth, out)
+    if node.type == 'PROGRAM':
+        for c in node.children: _collect_depths(c, depth, out)
+    elif node.type == 'GROUP':
+        out.add(depth); _collect_depths(node.child, depth + 1, out)
+    elif node.type in ('AND', 'OR', 'NEAR'):
+        for c in node.children: _collect_depths(c, depth, out)
+    elif node.type == 'NOT':
+        _collect_depths(node.child, depth, out)
 
 
 def render_tree_html(ast: ASTNode) -> str:
@@ -251,8 +255,8 @@ def render_annotated_html(s: str, highlights: List[Highlight], extra_class: str 
 
 
 def _show(body_html: str) -> None:
-    """Render HTML inline using st.html() with scoped CSS."""
-    st.html(f'<style>{CSS}</style><div class="bqv">{body_html}</div>')
+    st.markdown(f'<style>{CSS}</style><div class="bqv">{body_html}</div>',
+                unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
