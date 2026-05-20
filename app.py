@@ -5,11 +5,11 @@ Run with:  streamlit run app.py
 
 import streamlit as st
 import streamlit.components.v1 as components
-from boolean_query import validate_query, ASTNode, Highlight, stats_line
+from boolean_query import validate_query, collect_stats, ASTNode, Highlight, stats_line
 from typing import List
 
 # ─────────────────────────────────────────────
-#  Colour palette (matches original)
+#  Palette & helpers
 # ─────────────────────────────────────────────
 
 PALETTE = [
@@ -22,7 +22,6 @@ PALETTE = [
 ]
 
 def _col(d): return PALETTE[d % len(PALETTE)]
-
 def _esc(s: str) -> str:
     return (s.replace('&', '&amp;').replace('<', '&lt;')
              .replace('>', '&gt;').replace('"', '&quot;'))
@@ -32,22 +31,33 @@ def _esc(s: str) -> str:
 # ─────────────────────────────────────────────
 
 EXAMPLES = [
-    ('Basic', '(((brown OR black OR panda OR polar OR spectacle* OR grizzl* OR andean OR sloth) NEAR/3 (bear))\nAND\n(cub* OR bab* OR hibernat*))\nNOT (RT OR kill* OR die* OR attack*)'),
-    ('Intermediate', '((((best OR favourit* OR superior) OR ((i OR me OR my OR we OR they OR he OR she) NEAR/4 (prefer* OR like* OR love* OR "only drink" OR "only drinks"))) NEAR/5 (tea NEAR/4(breakfast*)))\nAND\n(barry* OR lyon* OR mcgrath* OR twining* OR pukka* OR bewley*))\nNOT ((green NEAR/1 tea*) OR herbal)'),
-    ('Advanced', '((<<<english>>>\n((donegal OR tirconnell OR tirconaill OR tyrconnell)\nAND\n(<<<birds>>>(corncrake* OR "corn crake" OR razorbill*) OR\n<<<wildflowers>>>\n("dog violet" OR chickweed* OR primrose* OR bluebell*))))\nOR\n<<<irish>>>\n(("dun na ngall" OR "dún na ngall")\nAND\n(<<<éin>>>(traonach OR crosán OR cruidín) OR\n<<<bláthanna>>>\n(Anamóine OR sailchuach OR sabhaircín OR "cloigín gorm"))))\nNOT RT'),
+    ('Basic',
+     '(((brown OR black OR panda OR polar OR spectacle* OR grizzl* OR andean OR sloth) NEAR/3 (bear))\n'
+     'AND\n(cub* OR bab* OR hibernat*))\nNOT (RT OR kill* OR die* OR attack*)'),
+    ('Intermediate',
+     '((((best OR favourit* OR superior) OR ((i OR me OR my OR we OR they OR he OR she) NEAR/4 '
+     '(prefer* OR like* OR love* OR "only drink" OR "only drinks"))) NEAR/5 (tea NEAR/4(breakfast*)))\n'
+     'AND\n(barry* OR lyon* OR mcgrath* OR twining* OR pukka* OR bewley*))\n'
+     'NOT ((green NEAR/1 tea*) OR herbal)'),
+    ('Advanced',
+     '((<<<english>>>\n((donegal OR tirconnell OR tirconaill OR tyrconnell)\nAND\n'
+     '(<<<birds>>>(corncrake* OR "corn crake" OR razorbill*) OR\n<<<wildflowers>>>\n'
+     '("dog violet" OR chickweed* OR primrose* OR bluebell*))))\nOR\n<<<irish>>>\n'
+     '(("dun na ngall" OR "dún na ngall")\nAND\n(<<<éin>>>(traonach OR crosán OR cruidín) OR\n'
+     '<<<bláthanna>>>\n(Anamóine OR sailchuach OR sabhaircín OR "cloigín gorm"))))\nNOT RT'),
 ]
 
 # ─────────────────────────────────────────────
-#  CSS (verbatim from original, minus body/h1)
+#  CSS
 # ─────────────────────────────────────────────
 
 CSS = """
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-       background: #f8fafc; color: #1e293b; padding: 1rem; }
+       background: transparent; color: #1e293b; padding: 0.5rem 0.25rem; }
 .op-list { display: flex; flex-direction: column; gap: 4px; }
-.op-sep { font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
-          letter-spacing: 0.1em; color: #94a3b8; padding: 1px 2px; user-select: none; }
+.op-sep  { font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+           letter-spacing: 0.1em; color: #94a3b8; padding: 1px 2px; user-select: none; }
 .near-sep { color: #0891b2; }
 .not-sep  { color: #b91c1c; }
 .group-box { border-radius: 7px; padding: 8px 14px; }
@@ -59,30 +69,29 @@ body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
            letter-spacing: 0.06em; color: #6b7280; }
 .near-op { color: #0891b2; }
 .plain-text { font-family: 'Courier New','Consolas',monospace; font-size: 0.9rem; color: #374151; }
-.not-badge { display: inline-block; font-size: 0.65rem; font-weight: 800;
-             text-transform: uppercase; letter-spacing: 0.06em;
-             background: #fee2e2; color: #b91c1c; border: 1.5px solid #fca5a5;
-             border-radius: 4px; padding: 1px 5px; vertical-align: middle; line-height: 1; }
+.not-badge { display: inline-block; font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+             letter-spacing: 0.06em; background: #fee2e2; color: #b91c1c;
+             border: 1.5px solid #fca5a5; border-radius: 4px;
+             padding: 1px 5px; vertical-align: middle; line-height: 1; }
 .block-not { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.note-box { display: flex; align-items: baseline; gap: 8px; border-radius: 6px;
-            padding: 4px 10px; background: #f8fafc; border: 1.5px dashed #94a3b8; }
+.note-box  { display: flex; align-items: baseline; gap: 8px; border-radius: 6px;
+             padding: 4px 10px; background: #f8fafc; border: 1.5px dashed #94a3b8; }
 .note-label { font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
               letter-spacing: 0.06em; color: #94a3b8; flex-shrink: 0; }
-.note-text { font-family: 'Courier New','Consolas',monospace; font-size: 0.85rem;
-             color: #64748b; font-style: italic; }
-.tree-wrap { background: white; border: 1.5px solid #e2e8f0; border-radius: 10px;
-             padding: 1.25rem 1.5rem; overflow-x: auto; }
-.legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
-          padding-top: 0.85rem; border-top: 1px solid #e2e8f0; }
-.legend-item { display: flex; align-items: center; gap: 0.4rem;
-               font-size: 0.78rem; color: #64748b; }
+.note-text  { font-family: 'Courier New','Consolas',monospace; font-size: 0.85rem;
+              color: #64748b; font-style: italic; }
+.tree-wrap  { background: white; border: 1.5px solid #e2e8f0; border-radius: 10px;
+              padding: 1.25rem 1.5rem; overflow-x: auto; }
+.legend     { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
+              padding-top: 0.85rem; border-top: 1px solid #e2e8f0; }
+.legend-item   { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #64748b; }
 .legend-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 .query-display { font-family: 'Courier New','Consolas',monospace; font-size: 0.88rem;
                  line-height: 1.85; white-space: pre-wrap; word-break: break-word;
                  padding: 0.85rem 1rem; background: white; border: 1.5px solid #e2e8f0;
                  border-radius: 8px; color: #1e293b; margin-bottom: 0.75rem; }
-.query-display.has-errors  { border-color: #fca5a5; background: #fff8f8; }
-.query-display.has-warnings{ border-color: #fcd34d; background: #fffef5; }
+.query-display.has-errors   { border-color: #fca5a5; background: #fff8f8; }
+.query-display.has-warnings { border-color: #fcd34d; background: #fffef5; }
 .hl-error { background: #fee2e2; color: #991b1b; border-radius: 3px;
             border-bottom: 2.5px solid #ef4444; padding: 0 2px; cursor: help; }
 .hl-warn  { background: #fef9c3; color: #713f12; border-radius: 3px;
@@ -108,32 +117,29 @@ def _render_block(node: ASTNode, depth: int) -> str:
 
     if node.type == 'GROUP':
         c = _col(depth)
-        inner = _render_group_content(node.child, depth + 1)
-        return (f'<div class="group-box" '
-                f'style="background:{c["bg"]};border:1.5px solid {c["border"]};">'
-                f'{inner}</div>')
+        return (f'<div class="group-box" style="background:{c["bg"]};border:1.5px solid {c["border"]};">'
+                f'{_render_group_content(node.child, depth + 1)}</div>')
 
     if node.type in ('AND', 'OR', 'NEAR'):
         label = node.op if node.type == 'NEAR' else node.type
-        parts, logic_idx = [], 0
+        parts, li = [], 0
         for child in node.children:
             if child.type == 'NOTE':
                 parts.append(_render_block(child, depth)); continue
             is_not = child.type == 'NOT'
-            if logic_idx > 0:
+            if li > 0:
                 sc  = 'op-sep not-sep' if is_not else ('op-sep near-sep' if node.type == 'NEAR' else 'op-sep')
                 txt = 'NOT' if is_not else label
                 parts.append(f'<div class="{sc}">{txt}</div>')
             parts.append(_render_block(child.child if is_not else child, depth))
-            logic_idx += 1
+            li += 1
         return f'<div class="op-list">{"".join(parts)}</div>'
 
     if node.type == 'NOT':
         return f'<div class="block-not"><span class="not-badge">NOT</span>{_render_block(node.child, depth)}</div>'
 
     if node.type == 'NOTE':
-        return (f'<div class="note-box">'
-                f'<span class="note-label">NOTE</span>'
+        return (f'<div class="note-box"><span class="note-label">NOTE</span>'
                 f'<span class="note-text">{_esc(node.value)}</span></div>')
 
     return f'<span class="plain-text">{_esc(node.value)}</span>'
@@ -150,7 +156,6 @@ def _render_group_content(node: ASTNode, depth: int) -> str:
     if not any(_is_block(c) for c in node.children):
         return f'<div class="group-content"><div class="text-run">{_inline(node, depth)}</div></div>'
 
-    # Mixed block / inline segments
     segs, buf = [], []
     for ch in node.children:
         if _is_block(ch):
@@ -160,16 +165,16 @@ def _render_group_content(node: ASTNode, depth: int) -> str:
             buf.append(ch)
     if buf: segs.append(('text', buf))
 
-    parts, seg_idx = [], 0
+    parts, si = [], 0
     for kind, val in segs:
         if kind == 'block' and val.type == 'NOTE':
             parts.append(f'<div style="padding-left:10px">{_render_block(val, depth)}</div>'); continue
-        if seg_idx > 0:
+        if si > 0:
             is_not = kind == 'block' and val.type == 'NOT'
             sc  = 'op-sep not-sep' if is_not else ('op-sep near-sep' if node.type == 'NEAR' else 'op-sep')
             txt = 'NOT' if is_not else op
             parts.append(f'<div class="{sc}">{txt}</div>')
-        seg_idx += 1
+        si += 1
         if kind == 'block':
             n2 = val.child if val.type == 'NOT' else val
             parts.append(f'<div style="padding-left:10px">{_render_block(n2, depth)}</div>')
@@ -186,14 +191,13 @@ def _render_group_content(node: ASTNode, depth: int) -> str:
 
 
 def _inline(node: ASTNode, depth: int) -> str:
-    if node.type == 'TERM':  return _esc(node.value)
-    if node.type == 'NOTE':  return f'<span class="note-text">«{_esc(node.value)}»</span>'
+    if node.type == 'TERM': return _esc(node.value)
+    if node.type == 'NOTE': return f'<span class="note-text">«{_esc(node.value)}»</span>'
     if node.type == 'NOT':
         return f'<span class="not-badge">NOT</span> {_inline(node.child, depth)}'
     if node.type == 'GROUP':
         c = _col(depth)
-        return (f'<span class="inline-group" '
-                f'style="background:{c["bg"]};border:1.5px solid {c["border"]};">'
+        return (f'<span class="inline-group" style="background:{c["bg"]};border:1.5px solid {c["border"]};">'
                 f'{_inline(node.child, depth + 1)}</span>')
     if node.type in ('AND', 'OR', 'NEAR'):
         label = node.op if node.type == 'NEAR' else node.type
@@ -208,20 +212,15 @@ def _inline(node: ASTNode, depth: int) -> str:
 
 
 def _collect_depths(node: ASTNode, depth: int, out: set):
-    if node.type == 'PROGRAM':
-        for c in node.children: _collect_depths(c, depth, out)
-    elif node.type == 'GROUP':
-        out.add(depth); _collect_depths(node.child, depth + 1, out)
-    elif node.type in ('AND', 'OR', 'NEAR'):
-        for c in node.children: _collect_depths(c, depth, out)
-    elif node.type == 'NOT':
-        _collect_depths(node.child, depth, out)
+    if   node.type == 'PROGRAM':             [_collect_depths(c, depth, out) for c in node.children]
+    elif node.type == 'GROUP':               out.add(depth); _collect_depths(node.child, depth + 1, out)
+    elif node.type in ('AND', 'OR', 'NEAR'): [_collect_depths(c, depth, out) for c in node.children]
+    elif node.type == 'NOT':                 _collect_depths(node.child, depth, out)
 
 
 def render_tree_html(ast: ASTNode) -> str:
     depths: set = set()
     _collect_depths(ast, 0, depths)
-    tree = _render_block(ast, 0)
     legend = ''
     for d in sorted(depths):
         c = _col(d)
@@ -230,14 +229,13 @@ def render_tree_html(ast: ASTNode) -> str:
                    f'Group level {d + 1}</div>')
     if legend:
         legend = f'<div class="legend">{legend}</div>'
-    return f'<div class="tree-wrap">{tree}{legend}</div>'
+    return f'<div class="tree-wrap">{_render_block(ast, 0)}{legend}</div>'
 
 
 def render_annotated_html(s: str, highlights: List[Highlight], extra_class: str = '') -> str:
     cls = f'query-display{" " + extra_class if extra_class else ""}'
     if not highlights:
         return f'<div class="{cls}">{_esc(s)}</div>'
-
     sorted_hl = sorted([h for h in highlights if h.end > h.start],
                        key=lambda h: (h.start, -(h.end - h.start)))
     parts, pos = [], 0
@@ -252,7 +250,15 @@ def render_annotated_html(s: str, highlights: List[Highlight], extra_class: str 
     return f'<div class="{cls}">{"".join(parts)}</div>'
 
 
-def _full_page(body_html: str, height: int) -> None:
+def _tree_height(ast: ASTNode) -> int:
+    s = collect_stats(ast)
+    h = 120 + s['groups'] * 55 + s['max_depth'] * 35
+    for n in s['ops'].values():
+        h += n * 22
+    return min(max(h, 200), 900)
+
+
+def _show(body_html: str, height: int) -> None:
     html = f'<html><head><style>{CSS}</style></head><body>{body_html}</body></html>'
     components.html(html, height=height, scrolling=True)
 
@@ -263,47 +269,75 @@ def _full_page(body_html: str, height: int) -> None:
 
 st.set_page_config(page_title='Boolean Query Visualiser', layout='centered')
 st.title('Boolean Query Visualiser')
-st.caption('Build a Boolean query — structure is clustered live as you type.')
+st.caption('Build a Boolean query — structure is clustered as you type.')
 
-# Example buttons
-cols = st.columns([1, 1, 1, 4])
-for i, (label, _) in enumerate(EXAMPLES):
-    if cols[i].button(label, key=f'eg{i}'):
-        st.session_state['query'] = EXAMPLES[i][1]
+# ── Example buttons — equal columns, no wrapping ──
+eg_cols = st.columns(len(EXAMPLES))
+for i, (label, text) in enumerate(EXAMPLES):
+    if eg_cols[i].button(label, use_container_width=True, key=f'eg{i}'):
+        st.session_state['_q'] = text
+        st.session_state['warn_dismissed_for'] = None
+        st.rerun()
+
+# ── Query textarea ──
+if '_q' not in st.session_state:
+    st.session_state['_q'] = ''
 
 query = st.text_area(
     'Query',
-    value=st.session_state.get('query', ''),
-    height=120,
+    value=st.session_state['_q'],
+    height=130,
     placeholder='e.g. ("climate change" OR "global warming") AND (policy OR legislation) AND NOT satire',
-    key='query',
 )
+st.session_state['_q'] = query  # keep in sync for example-button loads
 
 if st.button('Clear'):
-    st.session_state['query'] = ''
+    st.session_state['_q'] = ''
+    st.session_state['warn_dismissed_for'] = None
     st.rerun()
 
-# ── Validation & display ──────────────────────
+st.divider()
+
+# ── Validate & display ──
 result = validate_query(query)
 
 if result['status'] == 'empty':
-    pass
+    st.caption('Enter a query above to see its structure.')
 
 elif result['status'] == 'error':
-    st.error('\n'.join(f'▸ {e["message"]}' for e in result['issues']))
-    _full_page(render_annotated_html(query, result['highlights'], 'has-errors'), 200)
+    for issue in result['issues']:
+        st.error(f"▸ {issue['message']}")
+    lines = query.count('\n') + 1
+    _show(render_annotated_html(query, result['highlights'], 'has-errors'),
+          height=max(100, lines * 30 + 60))
 
 elif result['status'] == 'warn':
-    st.warning('\n'.join(f'▸ {e["message"]}' for e in result['issues']))
-    if result['stats']:
-        sl = stats_line(result['stats'])
-        if sl: st.caption(sl)
-    _full_page(render_annotated_html(query, result['highlights'], 'has-warnings'), 200)
-    _full_page(render_tree_html(result['ast']), 600)
+    dismissed = st.session_state.get('warn_dismissed_for') == query
+
+    if not dismissed:
+        warn_col, btn_col = st.columns([5, 1])
+        with warn_col:
+            for issue in result['issues']:
+                st.warning(f"▸ {issue['message']}")
+        with btn_col:
+            st.write('')  # align vertically with the warning box
+            if st.button('Dismiss', key='dismiss'):
+                st.session_state['warn_dismissed_for'] = query
+                st.rerun()
+        # Annotated text + tree in ONE component — no double-scrolling
+        lines  = query.count('\n') + 1
+        ann_h  = max(100, lines * 30 + 60)
+        _show(
+            render_annotated_html(query, result['highlights'], 'has-warnings') +
+            render_tree_html(result['ast']),
+            height=ann_h + _tree_height(result['ast']) + 20,
+        )
+    else:
+        sl = stats_line(result['stats']) if result['stats'] else ''
+        st.success(f'Valid — {sl}' if sl else 'Valid')
+        _show(render_tree_html(result['ast']), _tree_height(result['ast']))
 
 elif result['status'] == 'valid':
-    if result['stats']:
-        sl = stats_line(result['stats'])
-        if sl: st.success(f'Valid — {sl}')
-        else:  st.success('Valid')
-    _full_page(render_tree_html(result['ast']), 600)
+    sl = stats_line(result['stats']) if result['stats'] else ''
+    st.success(f'Valid — {sl}' if sl else 'Valid')
+    _show(render_tree_html(result['ast']), _tree_height(result['ast']))
