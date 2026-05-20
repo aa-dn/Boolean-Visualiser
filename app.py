@@ -1,10 +1,9 @@
 """
 Boolean Query Visualiser — Streamlit app.
-Run with:  streamlit run app.py
+Run with:  python -m streamlit run app.py
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 from boolean_query import validate_query, collect_stats, ASTNode, Highlight, stats_line
 from typing import List
 
@@ -48,54 +47,55 @@ EXAMPLES = [
 ]
 
 # ─────────────────────────────────────────────
-#  CSS
+#  CSS — all rules scoped under .bqv so they
+#  don't touch Streamlit's own styles
 # ─────────────────────────────────────────────
 
 CSS = """
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-       background: transparent; color: #1e293b; padding: 0.5rem 0.25rem; }
-.op-list { display: flex; flex-direction: column; gap: 4px; }
-.op-sep  { font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
-           letter-spacing: 0.1em; color: #94a3b8; padding: 1px 2px; user-select: none; }
-.near-sep { color: #0891b2; }
-.not-sep  { color: #b91c1c; }
-.group-box { border-radius: 7px; padding: 8px 14px; }
-.group-content { display: flex; flex-direction: column; gap: 4px; }
-.text-run { font-family: 'Courier New','Consolas',monospace; font-size: 0.9rem;
-            color: #1e293b; line-height: 1.6; }
-.inline-group { border-radius: 4px; padding: 1px 5px; }
-.para-op { font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
-           letter-spacing: 0.06em; color: #6b7280; }
-.near-op { color: #0891b2; }
-.plain-text { font-family: 'Courier New','Consolas',monospace; font-size: 0.9rem; color: #374151; }
-.not-badge { display: inline-block; font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
-             letter-spacing: 0.06em; background: #fee2e2; color: #b91c1c;
-             border: 1.5px solid #fca5a5; border-radius: 4px;
-             padding: 1px 5px; vertical-align: middle; line-height: 1; }
-.block-not { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.note-box  { display: flex; align-items: baseline; gap: 8px; border-radius: 6px;
-             padding: 4px 10px; background: #f8fafc; border: 1.5px dashed #94a3b8; }
-.note-label { font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
-              letter-spacing: 0.06em; color: #94a3b8; flex-shrink: 0; }
-.note-text  { font-family: 'Courier New','Consolas',monospace; font-size: 0.85rem;
-              color: #64748b; font-style: italic; }
-.tree-wrap  { background: white; border: 1.5px solid #e2e8f0; border-radius: 10px;
-              padding: 1.25rem 1.5rem; overflow-x: auto; }
-.legend     { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
-              padding-top: 0.85rem; border-top: 1px solid #e2e8f0; }
-.legend-item   { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #64748b; }
-.legend-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
-.query-display { font-family: 'Courier New','Consolas',monospace; font-size: 0.88rem;
-                 line-height: 1.85; white-space: pre-wrap; word-break: break-word;
-                 padding: 0.85rem 1rem; background: white; border: 1.5px solid #e2e8f0;
-                 border-radius: 8px; color: #1e293b; margin-bottom: 0.75rem; }
-.query-display.has-errors   { border-color: #fca5a5; background: #fff8f8; }
-.query-display.has-warnings { border-color: #fcd34d; background: #fffef5; }
-.hl-error { background: #fee2e2; color: #991b1b; border-radius: 3px;
-            border-bottom: 2.5px solid #ef4444; padding: 0 2px; cursor: help; }
-.hl-warn  { background: #fef9c3; color: #713f12; border-radius: 3px;
-            border-bottom: 2.5px solid #eab308; padding: 0 2px; cursor: help; }
+.bqv * { box-sizing: border-box; }
+.bqv { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; }
+.bqv .op-list  { display: flex; flex-direction: column; gap: 4px; }
+.bqv .op-sep   { font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+                 letter-spacing: 0.1em; color: #94a3b8; padding: 1px 2px; user-select: none; }
+.bqv .near-sep { color: #0891b2; }
+.bqv .not-sep  { color: #b91c1c; }
+.bqv .group-box     { border-radius: 7px; padding: 8px 14px; }
+.bqv .group-content { display: flex; flex-direction: column; gap: 4px; }
+.bqv .text-run    { font-family: 'Courier New','Consolas',monospace; font-size: 0.9rem;
+                    color: #1e293b; line-height: 1.6; }
+.bqv .inline-group { border-radius: 4px; padding: 1px 5px; }
+.bqv .para-op  { font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
+                 letter-spacing: 0.06em; color: #6b7280; }
+.bqv .near-op  { color: #0891b2; }
+.bqv .plain-text { font-family: 'Courier New','Consolas',monospace; font-size: 0.9rem; color: #374151; }
+.bqv .not-badge  { display: inline-block; font-size: 0.65rem; font-weight: 800;
+                   text-transform: uppercase; letter-spacing: 0.06em;
+                   background: #fee2e2; color: #b91c1c; border: 1.5px solid #fca5a5;
+                   border-radius: 4px; padding: 1px 5px; vertical-align: middle; line-height: 1; }
+.bqv .block-not { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bqv .note-box  { display: flex; align-items: baseline; gap: 8px; border-radius: 6px;
+                  padding: 4px 10px; background: #f8fafc; border: 1.5px dashed #94a3b8; }
+.bqv .note-label { font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+                   letter-spacing: 0.06em; color: #94a3b8; flex-shrink: 0; }
+.bqv .note-text  { font-family: 'Courier New','Consolas',monospace; font-size: 0.85rem;
+                   color: #64748b; font-style: italic; }
+.bqv .tree-wrap  { background: white; border: 1.5px solid #e2e8f0; border-radius: 10px;
+                   padding: 1.25rem 1.5rem; overflow-x: auto; }
+.bqv .legend     { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;
+                   padding-top: 0.85rem; border-top: 1px solid #e2e8f0; }
+.bqv .legend-item   { display: flex; align-items: center; gap: 0.4rem;
+                      font-size: 0.78rem; color: #64748b; }
+.bqv .legend-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.bqv .query-display { font-family: 'Courier New','Consolas',monospace; font-size: 0.88rem;
+                      line-height: 1.85; white-space: pre-wrap; word-break: break-word;
+                      padding: 0.85rem 1rem; background: white; border: 1.5px solid #e2e8f0;
+                      border-radius: 8px; color: #1e293b; margin-bottom: 0.75rem; }
+.bqv .query-display.has-errors   { border-color: #fca5a5; background: #fff8f8; }
+.bqv .query-display.has-warnings { border-color: #fcd34d; background: #fffef5; }
+.bqv .hl-error { background: #fee2e2; color: #991b1b; border-radius: 3px;
+                 border-bottom: 2.5px solid #ef4444; padding: 0 2px; cursor: help; }
+.bqv .hl-warn  { background: #fef9c3; color: #713f12; border-radius: 3px;
+                 border-bottom: 2.5px solid #eab308; padding: 0 2px; cursor: help; }
 """
 
 # ─────────────────────────────────────────────
@@ -250,17 +250,9 @@ def render_annotated_html(s: str, highlights: List[Highlight], extra_class: str 
     return f'<div class="{cls}">{"".join(parts)}</div>'
 
 
-def _tree_height(ast: ASTNode) -> int:
-    s = collect_stats(ast)
-    h = 120 + s['groups'] * 55 + s['max_depth'] * 35
-    for n in s['ops'].values():
-        h += n * 22
-    return min(max(h, 200), 900)
-
-
-def _show(body_html: str, height: int) -> None:
-    html = f'<html><head><style>{CSS}</style></head><body>{body_html}</body></html>'
-    components.html(html, height=height, scrolling=True)
+def _show(body_html: str) -> None:
+    """Render HTML inline using st.html() with scoped CSS."""
+    st.html(f'<style>{CSS}</style><div class="bqv">{body_html}</div>')
 
 
 # ─────────────────────────────────────────────
@@ -289,7 +281,7 @@ query = st.text_area(
     height=130,
     placeholder='e.g. ("climate change" OR "global warming") AND (policy OR legislation) AND NOT satire',
 )
-st.session_state['_q'] = query  # keep in sync for example-button loads
+st.session_state['_q'] = query
 
 if st.button('Clear'):
     st.session_state['_q'] = ''
@@ -307,9 +299,7 @@ if result['status'] == 'empty':
 elif result['status'] == 'error':
     for issue in result['issues']:
         st.error(f"▸ {issue['message']}")
-    lines = query.count('\n') + 1
-    _show(render_annotated_html(query, result['highlights'], 'has-errors'),
-          height=max(100, lines * 30 + 60))
+    _show(render_annotated_html(query, result['highlights'], 'has-errors'))
 
 elif result['status'] == 'warn':
     dismissed = st.session_state.get('warn_dismissed_for') == query
@@ -320,24 +310,21 @@ elif result['status'] == 'warn':
             for issue in result['issues']:
                 st.warning(f"▸ {issue['message']}")
         with btn_col:
-            st.write('')  # align vertically with the warning box
+            st.write('')
             if st.button('Dismiss', key='dismiss'):
                 st.session_state['warn_dismissed_for'] = query
                 st.rerun()
-        # Annotated text + tree in ONE component — no double-scrolling
-        lines  = query.count('\n') + 1
-        ann_h  = max(100, lines * 30 + 60)
+        # Annotated text + tree in one component — no double-scrolling
         _show(
             render_annotated_html(query, result['highlights'], 'has-warnings') +
-            render_tree_html(result['ast']),
-            height=ann_h + _tree_height(result['ast']) + 20,
+            render_tree_html(result['ast'])
         )
     else:
         sl = stats_line(result['stats']) if result['stats'] else ''
         st.success(f'Valid — {sl}' if sl else 'Valid')
-        _show(render_tree_html(result['ast']), _tree_height(result['ast']))
+        _show(render_tree_html(result['ast']))
 
 elif result['status'] == 'valid':
     sl = stats_line(result['stats']) if result['stats'] else ''
     st.success(f'Valid — {sl}' if sl else 'Valid')
-    _show(render_tree_html(result['ast']), _tree_height(result['ast']))
+    _show(render_tree_html(result['ast']))
